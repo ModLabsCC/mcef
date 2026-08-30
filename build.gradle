@@ -34,6 +34,9 @@ tasks.register('cloneJcef', Exec) {
 }
 
 tasks.register('generateJcefCommitFile') {
+    // The commit is read from the submodule's HEAD/ref, so declare it as an
+    // input to invalidate the generated resource when the submodule changes.
+    inputs.property 'javaCefCommit', getCheckedOutGitCommitHash(project)
     outputs.file jcefCommitFile
     doLast {
         def commitHash = getCheckedOutGitCommitHash(project)
