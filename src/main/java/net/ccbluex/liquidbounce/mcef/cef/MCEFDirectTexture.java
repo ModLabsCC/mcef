@@ -20,13 +20,13 @@
 
 package net.ccbluex.liquidbounce.mcef.cef;
 
-import com.mojang.blaze3d.GpuFormat;
-import com.mojang.blaze3d.opengl.FrameBufferCache;
-import com.mojang.blaze3d.opengl.GlTexture;
-import com.mojang.blaze3d.opengl.GlTextureView;
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.textures.FilterMode;
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.GpuFormat;
+import com.mojang.renderpearl.api.textures.FilterMode;
+import com.mojang.renderpearl.api.textures.GpuTexture;
+import com.mojang.renderpearl.backend.opengl.FrameBufferCache;
+import com.mojang.renderpearl.backend.opengl.GlTexture;
+import com.mojang.renderpearl.backend.opengl.GlTextureView;
 import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import org.jspecify.annotations.NullMarked;

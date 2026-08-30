@@ -11,7 +11,7 @@
 
 package net.ccbluex.liquidbounce.mcef.cef;
 
-import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
 import net.ccbluex.liquidbounce.mcef.MCEF;
 import net.ccbluex.liquidbounce.mcef.utils.EglUtils;
 import org.cef.handler.CefAcceleratedPaintInfo;

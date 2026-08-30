@@ -11,7 +11,7 @@
 
 package net.ccbluex.liquidbounce.mcef.cef;
 
-import com.mojang.blaze3d.textures.GpuTexture;
+import com.mojang.renderpearl.api.textures.GpuTexture;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 

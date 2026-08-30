@@ -44,8 +44,6 @@ import java.awt.*;
 import java.nio.ByteBuffer;
 
 import static net.ccbluex.liquidbounce.mcef.MCEF.mc;
-import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
-import static org.lwjgl.glfw.GLFW.GLFW_RELEASE;
 
 /**
  * An instance of an "Off-screen rendered" Chromium web browser.
@@ -336,7 +334,7 @@ public class MCEFBrowser extends CefBrowserOsr {
         var time = System.currentTimeMillis();
         clicks = time - lastClickTime < 500 ? 2 : 1;
 
-        sendMouseEvent(new CefMouseEvent(GLFW_PRESS, mouseX, mouseY, clicks, button, btnMask));
+        sendMouseEvent(new CefMouseEvent(1/* GLFW_PRESS */, mouseX, mouseY, clicks, button, btnMask));
 
         this.lastClickTime = time;
         this.mouseButton = button;
@@ -361,7 +359,7 @@ public class MCEFBrowser extends CefBrowserOsr {
             }
         }
 
-        sendMouseEvent(new CefMouseEvent(GLFW_RELEASE, mouseX, mouseY, clicks, button, btnMask));
+        sendMouseEvent(new CefMouseEvent(0/*GLFW_RELEASE*/, mouseX, mouseY, clicks, button, btnMask));
         this.mouseButton = 0;
     }
 
@@ -451,7 +449,7 @@ public class MCEFBrowser extends CefBrowserOsr {
         // We do not want to change the cursor state since Minecraft does this for us.
         if (cursorType == CefCursorType.NONE) return;
 
-        MCEFCursorHelper.getCursorType(cursorType).select(mc.getWindow());
+        MCEFCursorHelper.getCursorType(cursorType).select();
     }
 
     private boolean isControlOrCommand(int modifiers) {

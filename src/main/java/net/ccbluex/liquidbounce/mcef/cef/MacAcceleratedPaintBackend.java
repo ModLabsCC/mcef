@@ -11,7 +11,7 @@
 
 package net.ccbluex.liquidbounce.mcef.cef;
 
-import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.renderpearl.backend.opengl.GlStateManager;
 import net.ccbluex.liquidbounce.mcef.MCEF;
 import org.cef.handler.CefAcceleratedPaintInfo;
 import org.cef.handler.CefAcceleratedPaintInfoMac;
@@ -22,9 +22,7 @@ import org.jspecify.annotations.Nullable;
 import java.nio.ByteBuffer;
 
 import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.opengl.GL12.GL_BGRA;
-import static org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE;
-import static org.lwjgl.opengl.GL12.GL_UNSIGNED_INT_8_8_8_8_REV;
+import static org.lwjgl.opengl.GL12.*;
 import static org.lwjgl.opengl.GL30.*;
 import static org.lwjgl.opengl.GL31.GL_TEXTURE_BINDING_RECTANGLE;
 import static org.lwjgl.opengl.GL31.GL_TEXTURE_RECTANGLE;
