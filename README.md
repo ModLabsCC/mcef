@@ -2,7 +2,16 @@
   <img src="https://github.com/CinemaMod/mcef/assets/30220598/938896d7-2589-49df-8f82-29266c64dfb7" alt="MCEF Logo" style="width:66px;height:66px;">
 </p>
 
-# MCEF (Minecraft Chromium Embedded Framework for LiquidBounce)
+# ModLabs MCEF
+
+ModLabs' fork of [CCBlueX/mcef](https://github.com/CCBlueX/mcef), with browser
+resource lifecycle fixes and rendering performance improvements.
+See [PERFORMANCE.md](PERFORMANCE.md) for the changes and runtime verification steps.
+
+Build with JDK 25: `git submodule update --init --recursive`, then `./gradlew build`.
+The artifact version is `3.4.0-26.2-modlabs.1`.
+
+## Upstream background
 
 A lightweight fork of MCEF designed specifically for integration with LiquidBounce. This barebone library provides essential Chromium web browser functionality for Minecraft.
 
@@ -10,7 +19,7 @@ MCEF is based on java-cef (Java Chromium Embedded Framework), which is based on 
 
 The library includes a downloader system for retrieving the necessary java-cef & CEF binaries required by the Chromium browser. This requires a connection to https://api.liquidbounce.net/, as well as Cloudflare Storage.
 
-Current Chromium version: `122.0.6261.112`
+The native JCEF revision is pinned by the `java-cef` submodule and recorded in `jcef.commit`.
 
 ## Supported Platforms
 - Windows 10/11 (x86_64, arm64)*
@@ -25,16 +34,8 @@ Current Chromium version: `122.0.6261.112`
 MCEF is LGPL, as long as your project doesn't modify or include MCEF source code, you can choose a different license. See the full license in the LICENSE file.
 
 ### Using MCEF in Your Project
-```gradle
-repositories {
-    maven { url 'https://jitpack.io' }
-}
-```
-```gradle
-dependencies {
-    modImplementation 'com.github.CCBlueX:mcef:3.1.0-1.21.4'
-}
-```
+Use a pinned checkout with a Gradle composite build that substitutes `net.ccbluex:mcef`
+with this project. No publication to CCBlueX's Maven repository is needed.
 
 ### Building & Modifying MCEF
 After cloning this repo, you will need to clone the java-cef git submodule using the provided gradle task: `./gradlew cloneJcef`.

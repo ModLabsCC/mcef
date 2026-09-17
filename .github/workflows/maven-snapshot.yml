@@ -1,4 +1,4 @@
-name: Maven Snapshot
+name: Build and test
 
 on:
   push:
@@ -24,10 +24,8 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew build
 
-      - name: Publish Snapshot to CCBlueX Maven
-        env:
-          MAVEN_TOKEN_NAME: ${{ secrets.MAVEN_TOKEN_NAME }}
-          MAVEN_TOKEN_SECRET: ${{ secrets.MAVEN_TOKEN_SECRET }}
-        run: |
-          VERSION=$(grep "^mod_version=" gradle.properties | cut -d'=' -f2)
-          ./gradlew publish -Pmod_version="${VERSION}-SNAPSHOT"
+      - name: Upload ModLabs MCEF jars
+        uses: actions/upload-artifact@v4
+        with:
+          name: modlabs-mcef
+          path: build/libs/*.jar

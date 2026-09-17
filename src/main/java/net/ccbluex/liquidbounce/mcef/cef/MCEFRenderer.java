@@ -73,6 +73,8 @@ public class MCEFRenderer implements Closeable {
     private boolean isBGRA = false;
     private boolean unpainted = true;
     private boolean isAccelerated = false;
+    private boolean closed = false;
+    private @Nullable ByteBuffer dirtyUploadBuffer;
 
     protected MCEFRenderer(boolean transparent) {
         this.transparent = transparent;
@@ -85,6 +87,7 @@ public class MCEFRenderer implements Closeable {
      * Initializes the renderer by generating a texture ID and setting up the texture parameters.
      */
     public void initialize() {
+        if (closed || textureRegistered) return;
         mc.getTextureManager().register(identifier, new MCEFGpuTexture(this));
         textureRegistered = true;
     }
@@ -218,6 +221,7 @@ public class MCEFRenderer implements Closeable {
      */
     protected void onAcceleratedPaint(CefAcceleratedPaintInfo info, int width, int height) {
         RenderSystem.assertOnRenderThread();
+        if (closed) return;
 
         if (transparent) {
             GlStateManager._enableBlend(0);
@@ -243,6 +247,7 @@ public class MCEFRenderer implements Closeable {
      */
     protected void onPaint(ByteBuffer buffer, int width, int height) {
         RenderSystem.assertOnRenderThread();
+        if (closed) return;
 
         var texture = ensureTexture(width, height);
 
@@ -283,19 +288,18 @@ public class MCEFRenderer implements Closeable {
     ) {
         RenderSystem.assertOnRenderThread();
 
-        if (texture == null || dirtyRects.length == 0) {
+        if (closed || texture == null || dirtyRects.length == 0) {
             return;
         }
 
+        dirtyRects = PaintRegions.clip(dirtyRects, sourceWidth, sourceHeight,
+                textureWidth, textureHeight, destOffsetX, destOffsetY);
+        if (dirtyRects.length == 0) return;
+
         var commandEncoder = RenderSystem.getDevice().createCommandEncoder();
         var upload = prepareDirtyUpload(buffer, sourceWidth, sourceHeight, dirtyRects);
-        GpuBufferSlice source;
-        try {
-            source = commandEncoder.transientMemory()
-                    .uploadStaging(upload.buffer(), 1L, GpuBuffer.USAGE_COPY_SRC);
-        } finally {
-            upload.close();
-        }
+        GpuBufferSlice source = commandEncoder.transientMemory()
+                .uploadStaging(upload.buffer(), 1L, GpuBuffer.USAGE_COPY_SRC);
 
         for (var dirtyRect : dirtyRects) {
             commandEncoder.copyBufferToTexture(
@@ -323,7 +327,7 @@ public class MCEFRenderer implements Closeable {
      * Uses the original CEF buffer for large updates. For sparse updates, pack the dirty bounding
      * box row-by-row so staging upload bandwidth scales with the changed area.
      */
-    private static DirtyUpload prepareDirtyUpload(
+    private DirtyUpload prepareDirtyUpload(
             ByteBuffer buffer,
             int sourceWidth,
             int sourceHeight,
@@ -344,7 +348,14 @@ public class MCEFRenderer implements Closeable {
             return new DirtyUpload(fixedByteBuffer(buffer, fullLength), 0, 0, sourceWidth, sourceHeight, false);
         }
 
-        var packed = MemoryUtil.memAlloc(Math.toIntExact(boundsBytes));
+        int requiredBytes = Math.toIntExact(boundsBytes);
+        if (dirtyUploadBuffer == null || dirtyUploadBuffer.capacity() < requiredBytes) {
+            MemoryUtil.memFree(dirtyUploadBuffer);
+            dirtyUploadBuffer = null;
+            dirtyUploadBuffer = MemoryUtil.memAlloc(requiredBytes);
+        }
+        var packed = dirtyUploadBuffer;
+        packed.clear();
         var sourceAddress = MemoryUtil.memAddress(buffer);
         var packedAddress = MemoryUtil.memAddress(packed);
         int rowBytes = bounds.width * GpuFormat.RGBA8_UNORM.blockSize();
@@ -363,22 +374,16 @@ public class MCEFRenderer implements Closeable {
             int offsetY,
             int width,
             int height,
-            boolean allocated
-    ) implements AutoCloseable {
+            boolean packed
+    ) {
         int sourceX(Rectangle rect) {
-            return allocated ? rect.x - offsetX : rect.x;
+            return packed ? rect.x - offsetX : rect.x;
         }
 
         int sourceY(Rectangle rect) {
-            return allocated ? rect.y - offsetY : rect.y;
+            return packed ? rect.y - offsetY : rect.y;
         }
 
-        @Override
-        public void close() {
-            if (allocated) {
-                MemoryUtil.memFree(buffer);
-            }
-        }
     }
 
     protected void onPaint(
@@ -403,6 +408,10 @@ public class MCEFRenderer implements Closeable {
     @Override
     public void close() {
         RenderSystem.assertOnRenderThread();
+        if (closed) return;
+        closed = true;
+        MemoryUtil.memFree(dirtyUploadBuffer);
+        dirtyUploadBuffer = null;
 
         if (this.textureView != null) {
             this.textureView.close();
@@ -511,6 +520,10 @@ public class MCEFRenderer implements Closeable {
         if (texture != null && textureWidth == width && textureHeight == height) {
             return texture;
         }
+
+        // A smaller viewport must not retain a staging allocation from a previous large one.
+        MemoryUtil.memFree(dirtyUploadBuffer);
+        dirtyUploadBuffer = null;
 
         if (textureView != null) {
             textureView.close();

@@ -5,26 +5,12 @@ plugins {
 }
 
 static def getCheckedOutGitCommitHash(Project mcefParent) {
-    def gitFolder = "$mcefParent.projectDir/.git/modules/java-cef/"
-    def takeFromHash = 40
-    /*
-     * '.git/HEAD' contains either
-     *      in case of detached head: the currently checked out commit hash
-     *      otherwise: a reference to a file containing the current commit hash
-     */
-    def gitHeadFile = new File(gitFolder + "HEAD")
-    if (gitHeadFile.exists()) {
-        def head = gitHeadFile.text.split(":") // .git/HEAD
-        def isCommit = head.length == 1 // e5a7c79edabbf7dd39888442df081b1c9d8e88fd
-        // def isRef = head.length > 1     // ref: refs/heads/master
-
-        if (isCommit) return head[0].trim().take(takeFromHash) // e5a7c79edabb
-
-        def refHead = new File(gitFolder + head[1].trim()) // .git/refs/heads/master
-        refHead.text.trim().take takeFromHash
-    } else {
-        return ""
-    }
+    // Works both standalone and when MCEF itself is a nested submodule/worktree.
+    if (!mcefParent.file('java-cef/.git').exists()) return ""
+    return mcefParent.providers.exec {
+        workingDir mcefParent.file('java-cef')
+        commandLine 'git', 'rev-parse', 'HEAD'
+    }.standardOutput.asText.get().trim()
 }
 
 final jcefCommitFile = layout.buildDirectory.file "jcef.commit"
@@ -73,17 +59,15 @@ dependencies {
 }
 
 sourceSets {
-    jcef {
+    // JCEF is part of MCEF's public API. Include it in the main classes variant as well
+    // as the jar so Gradle composite-build consumers can resolve the org.cef types.
+    main {
         java {
             srcDir "java-cef/java"
             exclude "**/tests/**"
         }
     }
 
-    main {
-        compileClasspath += jcef.output
-        runtimeClasspath += jcef.output
-    }
 }
 
 processResources {
@@ -98,7 +82,6 @@ processResources {
 
     inputs.property "version", project.version
 
-    dependsOn processJcefResources
     dependsOn generateJcefCommitFile
 }
 
@@ -115,13 +98,10 @@ jar {
                     'java-cef-commit'         : getCheckedOutGitCommitHash(project)
         ])
     }
-    from sourceSets.jcef.output.classesDirs
-    from sourceSets.jcef.output.resourcesDir
     from("LICENSE") {
         rename { "${it}_${project.base.archivesName.get()}"}
     }
     from jcefCommitFile
-    from sourceSets.jcef.output
 }
 
 java {
@@ -156,20 +136,6 @@ publishing {
         }
     }
 
-    repositories {
-        maven {
-            name = "ccbluex-maven"
-            def isSnapshot = version.toString().endsWith("-SNAPSHOT")
-            url = isSnapshot ? uri("https://maven.ccbluex.net/snapshots") : uri("https://maven.ccbluex.net/releases")
-            credentials {
-                username = System.getenv("MAVEN_TOKEN_NAME")
-                password = System.getenv("MAVEN_TOKEN_SECRET")
-            }
-            authentication {
-                basic(BasicAuthentication)
-            }
-        }
-    }
 }
 
 group = 'net.ccbluex'

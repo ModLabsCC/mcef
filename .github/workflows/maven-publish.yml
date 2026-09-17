@@ -1,4 +1,4 @@
-name: Maven Publish
+name: Release build
 
 on:
   release:
@@ -25,8 +25,8 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew build
 
-      - name: Publish to CCBlueX Maven
-        env:
-          MAVEN_TOKEN_NAME: ${{ secrets.MAVEN_TOKEN_NAME }}
-          MAVEN_TOKEN_SECRET: ${{ secrets.MAVEN_TOKEN_SECRET }}
-        run: ./gradlew publish
+      - name: Upload ModLabs MCEF jars
+        uses: actions/upload-artifact@v4
+        with:
+          name: modlabs-mcef
+          path: build/libs/*.jar

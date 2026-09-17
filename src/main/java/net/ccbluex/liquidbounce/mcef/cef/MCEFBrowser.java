@@ -87,6 +87,22 @@ public class MCEFBrowser extends CefBrowserOsr {
     private long lastClickTime = 0;
     private int clicks;
     private int mouseButton;
+    private volatile boolean renderingClosed;
+    private boolean renderingEnabled = true;
+
+    /** Call on Minecraft's render thread after native browser creation. */
+    public void setRenderingEnabled(boolean enabled, int foregroundFrameRate) {
+        if (renderingClosed) return;
+        renderingEnabled = enabled;
+        setWindowlessFrameRate(enabled ? Math.max(1, foregroundFrameRate) : 1);
+        if (enabled) {
+            // Paints skipped while hidden may contain damage absent from the next dirty rects.
+            lastWidth = lastHeight = 0;
+            invalidate();
+        } else {
+            setFocus(false);
+        }
+    }
 
     private final boolean isMacOs = MCEFPlatform.getPlatform().isMacOS();
     private final boolean isWindows = MCEFPlatform.getPlatform().isWindows();
@@ -148,27 +164,38 @@ public class MCEFBrowser extends CefBrowserOsr {
     // Popups
     @Override
     public void onPopupShow(CefBrowser browser, boolean show) {
+        if (renderingClosed) return;
         super.onPopupShow(browser, show);
         showPopup = show;
-        if (!show) popupDrawn = false;
+        if (!show) {
+            releasePopupGraphics();
+            // Keep popupDrawn until the next view paint restores the covered pixels.
+            invalidate();
+        }
     }
 
     @Override
     public void onPopupSize(CefBrowser browser, Rectangle size) {
+        if (renderingClosed) return;
         super.onPopupSize(browser, size);
-        popupSize = size;
-        this.popupGraphics = ByteBuffer.allocateDirect(
-                size.width * size.height * 4
-        );
+        popupSize = new Rectangle(size);
+        int bytes = Math.multiplyExact(Math.multiplyExact(size.width, size.height), 4);
+        if (popupGraphics == null || popupGraphics.capacity() != bytes) {
+            releasePopupGraphics();
+            popupGraphics = MemoryUtil.memAlloc(bytes);
+        }
+        popupDrawn = false;
     }
 
     // Graphics
     @Override
     public void onPaint(CefBrowser browser, boolean popup, Rectangle[] dirtyRects, ByteBuffer buffer, int width, int height) {
         // nothing to update
-        if (dirtyRects.length == 0) {
+        if (renderingClosed || !renderingEnabled || dirtyRects.length == 0) {
             return;
         }
+
+        if (!popup && (width != browser_rect_.width || height != browser_rect_.height)) return;
         
         if (!popup) {
             if (lastWidth != width || lastHeight != height) {
@@ -185,12 +212,13 @@ public class MCEFBrowser extends CefBrowserOsr {
                     if (!showPopup) {
                         // if the popup is not visible, just draw the contents of the buffer
                         renderer.onPaint(buffer, width, height,
-                                popupSize.width, popupSize.height,
+                                popupSize.x, popupSize.y,
                                 popupSize.x, popupSize.y,
                                 popupSize.width, popupSize.height);
-                        popupGraphics = null;
+                        releasePopupGraphics();
                         popupSize = null;
-                    } else if (popupDrawn) {
+                        popupDrawn = false;
+                    } else if (popupDrawn && popupGraphics != null) {
                         // else, a use copy of the popup graphics, as it needs to remain visible
                         // and for some reason that I do not for the life of me understand, chromium does not seem to keep this data in memory outside of the paint loop, meaning it has to be copied around, which wastes performance
                         renderer.onPaint(popupGraphics, popupSize.width, popupSize.height,
@@ -201,7 +229,8 @@ public class MCEFBrowser extends CefBrowserOsr {
                 }
             }
         } else {
-            if (!renderer.isTextureReady() || popupSize == null) return;
+            if (!renderer.isTextureReady() || popupSize == null || popupGraphics == null
+                    || width != popupSize.width || height != popupSize.height) return;
             int start = buffer.capacity();
             int end = 0;
             for (Rectangle dirtyRect : dirtyRects) {
@@ -242,7 +271,7 @@ public class MCEFBrowser extends CefBrowserOsr {
     public void onAcceleratedPaint(CefBrowser browser, boolean popup, Rectangle[] dirtyRects,
                                    CefAcceleratedPaintInfo info) {
         // nothing to update
-        if (dirtyRects.length == 0) {
+        if (renderingClosed || !renderingEnabled || dirtyRects.length == 0) {
             return;
         }
 
@@ -428,14 +457,43 @@ public class MCEFBrowser extends CefBrowserOsr {
 
     // Closing
     public void close() {
+        close(true);
+    }
+
+    @Override
+    public void close(boolean force) {
+        if (renderingClosed) return;
+        if (force) {
+            renderingClosed = true;
+            mc.execute(this::releaseRenderingResources);
+        }
+        super.close(force);
+    }
+
+    @Override
+    public synchronized void onBeforeClose() {
+        renderingClosed = true;
+        mc.execute(this::releaseRenderingResources);
+        super.onBeforeClose();
+    }
+
+    private void releasePopupGraphics() {
+        MemoryUtil.memFree(popupGraphics);
+        popupGraphics = null;
+    }
+
+    private void releaseRenderingResources() {
+        releasePopupGraphics();
+        popupSize = null;
+        showPopup = popupDrawn = false;
+        if (dragContext.isDragging()) dragContext.stopDragging();
         renderer.close();
-        cursorChangeListener.onCursorChange(0);
-        super.close(true);
     }
 
     @Override
     protected void finalize() throws Throwable {
-        mc.schedule(renderer::close);
+        renderingClosed = true;
+        mc.schedule(this::releaseRenderingResources);
         super.finalize();
     }
 
