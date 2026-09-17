@@ -62,9 +62,40 @@ allocates CPU-mappable linear GBM buffers, which can fail on NVIDIA before a usa
 paint callback reaches Java. [CEF #4237](https://github.com/chromiumembedded/cef/issues/4237)
 and [the pending CEF fix](https://github.com/chromiumembedded/cef/pull/4238) describe
 the producer-side change. Changing this Java importer does not apply that native fix.
-Do not remove a host's NVIDIA safeguard until patched native CEF/JCEF binaries are
-built, distributed and verified on that driver.
+Hosts can replace vendor blocklists with the rendering probe below: the current
+broken native path should fail the probe, while working native binaries can pass
+without requiring a new vendor allowlist or a saved-setting change.
 
 Nine additional regression tests cover Linux launch switches and DMA-BUF descriptor
 construction. All 22 tests and the Java/client builds pass on the Windows build host.
 No Arch/Wayland/NVIDIA runtime validation has been performed.
+
+## Automatic acceleration detection
+
+`MCEFAccelerationProbe` opens an isolated 32x32 offscreen page with two known opaque
+gray bands, using shared-texture rendering. It does not open a visible window and
+does not use any application's UI page as its test image.
+
+After the normal CEF message pump, call `poll(windowVisible)` on the render thread.
+The probe reads 4 KB from the final GPU texture at most four times per second and
+checks four pixel locations, including alpha. Receiving a paint callback or merely
+allocating a texture does not pass the test: the expected pixels must actually arrive.
+There is no readback overhead once the probe completes.
+
+- `PASSED`: open normal browsers using the user's accelerated-rendering preference.
+- `FAILED`: open them with shared textures disabled for this process. Do not persist
+  a disabled preference; create a new probe next launch to retest updated binaries/drivers.
+- `PENDING`: continue pumping/polling. Failure occurs after eight seconds of active
+  polling without matching pixels. Minimized windows and long message-pump stalls
+  do not count as continuous active rendering time.
+
+Always close the probe on completion or shutdown. Its private browser type can be
+recognized with `isProbeBrowser` so hosts can ignore its creation/load callbacks,
+including callbacks delivered after closure. Perform the probe before opening real
+browser tabs, so fallback needs no navigation/session recreation. An explicit global
+software-only override can skip probing entirely.
+
+This is a startup compatibility check, not a repair for native CEF's allocation bug
+or a continuous GPU-hang monitor. Nine new unit tests verify pixel validation and
+probe timing, bringing the suite to 31 tests. Actual GPU readback and the full native
+browser startup path still need runtime validation on the target machine.
