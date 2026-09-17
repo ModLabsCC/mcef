@@ -99,3 +99,33 @@ This is a startup compatibility check, not a repair for native CEF's allocation 
 or a continuous GPU-hang monitor. Nine new unit tests verify pixel validation and
 probe timing, bringing the suite to 31 tests. Actual GPU readback and the full native
 browser startup path still need runtime validation on the target machine.
+
+## Paint-upload overhead
+
+Software paints now choose between the original full image, a packed bounding box,
+and individually packed sparse rectangles. All dirty rectangles are still copied to
+their original destinations on every paint callback. No frames, animations, resolution,
+or UI features are removed. Fragmented updates with more than 64 rectangles retain
+the bounding/full-image strategy to limit packing overhead.
+
+For example, two 64x64 updates in opposite corners of a 1920x1080 image previously
+staged 8,294,400 bytes because their bounding box covered the screen. They now stage
+32,768 bytes in a single upload. This is a deterministic transfer-size comparison,
+not a measured FPS improvement.
+
+The reusable packing buffer grows geometrically rather than reallocating on every
+small size increase. New allocations remain capped at half the source image; viewport
+resize and close still release the buffer. In-bounds damage clipping avoids temporary
+lists/rectangle copies. The accelerated display texture's draw setup is cached until
+the underlying texture changes or closes.
+
+Popup damage is uploaded as one batch and cached by changed rows instead of copying
+the entire span between disjoint changes. The initial cache contains the complete
+popup image. Unrelated view damage no longer causes a redundant popup re-upload;
+overlapping damage still restores the popup.
+
+Twelve additional regression tests cover upload layout selection, bounded buffer growth,
+popup caching and overlap/clipping behavior. The packing test compares 500 deterministic
+cases, alternating heap/direct buffers, against direct pixel copies including clipped
+and overlapping rectangles. The complete suite has 43 tests. Native driver/frame-time
+profiling remains necessary to quantify in-game gains.

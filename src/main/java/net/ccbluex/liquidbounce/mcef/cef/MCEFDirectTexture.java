@@ -30,6 +30,7 @@ import com.mojang.blaze3d.textures.GpuTexture;
 import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.client.renderer.texture.AbstractTexture;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /**
  * A more efficient texture implementation that directly wraps an existing OpenGL texture ID.
@@ -38,6 +39,7 @@ import org.jspecify.annotations.NullMarked;
  */
 @NullMarked
 public class MCEFDirectTexture extends AbstractTexture {
+    private @Nullable TextureSetup cachedTextureSetup;
     public MCEFDirectTexture() {
         this.sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR, false);
     }
@@ -70,6 +72,7 @@ public class MCEFDirectTexture extends AbstractTexture {
     
     @Override
     public void close() {
+        cachedTextureSetup = null;
         if (this.textureView != null) {
             this.textureView.close();
             this.textureView = null;
@@ -96,7 +99,11 @@ public class MCEFDirectTexture extends AbstractTexture {
     }
 
     public TextureSetup getTextureSetup() {
-        return this.texture == null ? TextureSetup.noTexture() : TextureSetup.singleTexture(this.getTextureView(), this.sampler);
+        if (this.texture == null) return TextureSetup.noTexture();
+        if (cachedTextureSetup == null) {
+            cachedTextureSetup = TextureSetup.singleTexture(this.getTextureView(), this.sampler);
+        }
+        return cachedTextureSetup;
     }
 
     /**

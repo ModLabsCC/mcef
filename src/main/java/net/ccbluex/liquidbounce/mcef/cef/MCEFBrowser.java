@@ -218,7 +218,7 @@ public class MCEFBrowser extends CefBrowserOsr {
                         releasePopupGraphics();
                         popupSize = null;
                         popupDrawn = false;
-                    } else if (popupDrawn && popupGraphics != null) {
+                    } else if (popupDrawn && popupGraphics != null && PaintRegions.intersects(dirtyRects, popupSize)) {
                         // else, a use copy of the popup graphics, as it needs to remain visible
                         // and for some reason that I do not for the life of me understand, chromium does not seem to keep this data in memory outside of the paint loop, meaning it has to be copied around, which wastes performance
                         renderer.onPaint(popupGraphics, popupSize.width, popupSize.height,
@@ -231,36 +231,9 @@ public class MCEFBrowser extends CefBrowserOsr {
         } else {
             if (!renderer.isTextureReady() || popupSize == null || popupGraphics == null
                     || width != popupSize.width || height != popupSize.height) return;
-            int start = buffer.capacity();
-            int end = 0;
-            for (Rectangle dirtyRect : dirtyRects) {
-                renderer.onPaint(buffer, popupSize.width, popupSize.height,
-                        dirtyRect.x, dirtyRect.y,
-                        popupSize.x + dirtyRect.x, popupSize.y + dirtyRect.y,
-                        dirtyRect.width, dirtyRect.height);
-
-                int rectStart = (dirtyRect.x + ((dirtyRect.y) * popupSize.width)) << 2;
-                if (rectStart < start) start = rectStart;
-
-                int rectEnd = (((dirtyRect.y + dirtyRect.height - 1) * popupSize.width)
-                        + dirtyRect.x + dirtyRect.width) << 2;
-                if (rectEnd > end) end = rectEnd;
-            }
-            if (start < 0) start = 0;
-            if (end > buffer.capacity()) end = buffer.capacity();
-
-            if (end > start) {
-                // TODO: check if it's more performant to go for row-wise copies or if it's better to just copy the updated region
-                if (this.popupGraphics != null) {
-                    long addrFrom = MemoryUtil.memAddress(buffer);
-                    long addrTo = MemoryUtil.memAddress(popupGraphics);
-                    MemoryUtil.memCopy(
-                            addrFrom + start,
-                            addrTo + start,
-                            (end - start)
-                    );
-                }
-            }
+            // One staging allocation/upload for the whole popup paint, not one per rectangle.
+            renderer.onPaint(buffer, width, height, dirtyRects, popupSize.x, popupSize.y);
+            PaintRegions.copyPopupPixels(buffer, popupGraphics, width, height, dirtyRects, popupDrawn);
 
             popupDrawn = true;
         }

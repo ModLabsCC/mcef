@@ -39,6 +39,20 @@ class PaintRegionsTest {
         var damage = new Rectangle[]{new Rectangle(1, 2, 3, 4), new Rectangle(80, 90, 10, 5)};
         var result = PaintRegions.clip(damage, 100, 100, 100, 100, 0, 0);
         assertArrayEquals(damage, result);
-        assertNotSame(damage[0], result[0]);
+        assertArrayEquals(new Rectangle[]{new Rectangle(1, 2, 3, 4), new Rectangle(80, 90, 10, 5)}, damage);
+    }
+
+    @Test
+    void onlyRestoresPopupWhenViewDamageOverlapsIt() {
+        var popup = new Rectangle(40, 40, 20, 20);
+        assertFalse(PaintRegions.intersects(new Rectangle[]{new Rectangle(0, 0, 10, 10)}, popup));
+        assertFalse(PaintRegions.intersects(new Rectangle[]{new Rectangle(60, 40, 10, 10)}, popup));
+        assertTrue(PaintRegions.intersects(new Rectangle[]{new Rectangle(59, 59, 2, 2)}, popup));
+    }
+
+    @Test
+    void clipsExtremeOffsetsWithoutIntegerOverflow() {
+        assertEquals(0, PaintRegions.clip(new Rectangle[]{new Rectangle(0, 0, 10, 10)},
+                10, 10, 10, 10, Integer.MIN_VALUE, 0).length);
     }
 }

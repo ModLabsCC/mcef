@@ -299,15 +299,18 @@ public class MCEFRenderer implements Closeable {
         var commandEncoder = RenderSystem.getDevice().createCommandEncoder();
         var upload = prepareDirtyUpload(buffer, sourceWidth, sourceHeight, dirtyRects);
         GpuBufferSlice source = commandEncoder.transientMemory()
-                .uploadStaging(upload.buffer(), 1L, GpuBuffer.USAGE_COPY_SRC);
+                .uploadStaging(upload.buffer(), 4L, GpuBuffer.USAGE_COPY_SRC);
 
+        int packedOffset = 0;
         for (var dirtyRect : dirtyRects) {
+            boolean separate = upload.layout().separateRectangles();
+            int rectBytes = Math.toIntExact((long) dirtyRect.width * dirtyRect.height * 4);
             commandEncoder.copyBufferToTexture(
-                    source,
-                    upload.sourceX(dirtyRect),
-                    upload.sourceY(dirtyRect),
-                    upload.width(),
-                    upload.height(),
+                    separate ? source.slice(packedOffset, rectBytes) : source,
+                    separate ? 0 : dirtyRect.x - upload.layout().x(),
+                    separate ? 0 : dirtyRect.y - upload.layout().y(),
+                    separate ? dirtyRect.width : upload.layout().width(),
+                    separate ? dirtyRect.height : upload.layout().height(),
                     texture,
                     destOffsetX + dirtyRect.x,
                     destOffsetY + dirtyRect.y,
@@ -316,6 +319,7 @@ public class MCEFRenderer implements Closeable {
                     0,
                     0
             );
+            if (separate) packedOffset += rectBytes;
         }
 
         isAccelerated = false;
@@ -324,8 +328,8 @@ public class MCEFRenderer implements Closeable {
     }
 
     /**
-     * Uses the original CEF buffer for large updates. For sparse updates, pack the dirty bounding
-     * box row-by-row so staging upload bandwidth scales with the changed area.
+     * Dense updates use the original buffer. Sparse disjoint updates pack individual rectangles
+     * so unrelated regions of the screen do not inflate staging uploads.
      */
     private DirtyUpload prepareDirtyUpload(
             ByteBuffer buffer,
@@ -333,58 +337,26 @@ public class MCEFRenderer implements Closeable {
             int sourceHeight,
             Rectangle[] dirtyRects
     ) {
-        var fullLength = (long) sourceWidth * sourceHeight * GpuFormat.RGBA8_UNORM.blockSize();
-        if (dirtyRects.length == 0) {
-            return new DirtyUpload(fixedByteBuffer(buffer, fullLength), 0, 0, sourceWidth, sourceHeight, false);
-        }
+        int fullLength = Math.toIntExact((long) sourceWidth * sourceHeight * 4);
+        var source = fixedByteBuffer(buffer, fullLength);
+        var layout = DirtyUploadLayout.plan(sourceWidth, sourceHeight, dirtyRects);
+        if (!layout.packed()) return new DirtyUpload(source, layout);
 
-        var bounds = new Rectangle(dirtyRects[0]);
-        for (int i = 1; i < dirtyRects.length; i++) {
-            bounds.add(dirtyRects[i]);
-        }
-
-        long boundsBytes = (long) bounds.width * bounds.height * GpuFormat.RGBA8_UNORM.blockSize();
-        if (bounds.width <= 0 || bounds.height <= 0 || boundsBytes * 2L >= fullLength) {
-            return new DirtyUpload(fixedByteBuffer(buffer, fullLength), 0, 0, sourceWidth, sourceHeight, false);
-        }
-
-        int requiredBytes = Math.toIntExact(boundsBytes);
+        int requiredBytes = layout.bytes();
         if (dirtyUploadBuffer == null || dirtyUploadBuffer.capacity() < requiredBytes) {
+            int capacity = DirtyUploadLayout.nextCapacity(requiredBytes,
+                    dirtyUploadBuffer == null ? 0 : dirtyUploadBuffer.capacity(), fullLength / 2);
             MemoryUtil.memFree(dirtyUploadBuffer);
             dirtyUploadBuffer = null;
-            dirtyUploadBuffer = MemoryUtil.memAlloc(requiredBytes);
+            dirtyUploadBuffer = MemoryUtil.memAlloc(capacity);
         }
         var packed = dirtyUploadBuffer;
         packed.clear();
-        var sourceAddress = MemoryUtil.memAddress(buffer);
-        var packedAddress = MemoryUtil.memAddress(packed);
-        int rowBytes = bounds.width * GpuFormat.RGBA8_UNORM.blockSize();
-        for (int row = 0; row < bounds.height; row++) {
-            long sourceOffset = ((long) (bounds.y + row) * sourceWidth + bounds.x)
-                    * GpuFormat.RGBA8_UNORM.blockSize();
-            MemoryUtil.memCopy(sourceAddress + sourceOffset, packedAddress + (long) row * rowBytes, rowBytes);
-        }
-        packed.position(0).limit(Math.toIntExact(boundsBytes));
-        return new DirtyUpload(packed, bounds.x, bounds.y, bounds.width, bounds.height, true);
+        layout.pack(source, sourceWidth, dirtyRects, packed);
+        return new DirtyUpload(packed, layout);
     }
 
-    private record DirtyUpload(
-            ByteBuffer buffer,
-            int offsetX,
-            int offsetY,
-            int width,
-            int height,
-            boolean packed
-    ) {
-        int sourceX(Rectangle rect) {
-            return packed ? rect.x - offsetX : rect.x;
-        }
-
-        int sourceY(Rectangle rect) {
-            return packed ? rect.y - offsetY : rect.y;
-        }
-
-    }
+    private record DirtyUpload(ByteBuffer buffer, DirtyUploadLayout layout) {}
 
     protected void onPaint(
             ByteBuffer buffer,

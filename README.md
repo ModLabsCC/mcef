@@ -9,7 +9,7 @@ resource lifecycle fixes and rendering performance improvements.
 See [PERFORMANCE.md](PERFORMANCE.md) for the changes and runtime verification steps.
 
 Build with JDK 25: `git submodule update --init --recursive`, then `./gradlew build`.
-The artifact version is `3.4.0-26.2-modlabs.3`.
+The artifact version is `3.4.0-26.2-modlabs.4`.
 
 Linux EGL import improvements and an offscreen acceleration probe are included.
 Hosts can choose software rendering for a failing session and retry acceleration
