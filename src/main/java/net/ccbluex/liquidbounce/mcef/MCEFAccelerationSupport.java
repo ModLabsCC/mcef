@@ -25,6 +25,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import java.util.Locale;
 
 import net.ccbluex.liquidbounce.mcef.utils.EglUtils;
+import net.ccbluex.liquidbounce.mcef.utils.EglImageBinding;
 import org.lwjgl.egl.EGL14;
 import org.lwjgl.opengl.CGL;
 import org.lwjgl.opengl.GL;
@@ -146,6 +147,11 @@ public final class MCEFAccelerationSupport {
             );
             if (!hasDmabufImport || !hasImageBase) {
                 MCEF.INSTANCE.LOGGER.warn("Required EGL extensions for GPU acceleration not supported");
+                return Support.UNSUPPORTED;
+            }
+
+            if (!EglImageBinding.isSupported()) {
+                MCEF.INSTANCE.LOGGER.warn("Neither GL_EXT_EGL_image_storage nor GL_OES_EGL_image is available");
                 return Support.UNSUPPORTED;
             }
 

@@ -35,27 +35,32 @@ final class CefConstants {
     static final int[] DMA_BUF_PLANE_FD_ATTRS = new int[]{
             EXTImageDMABufImport.EGL_DMA_BUF_PLANE0_FD_EXT,
             EXTImageDMABufImport.EGL_DMA_BUF_PLANE1_FD_EXT,
-            EXTImageDMABufImport.EGL_DMA_BUF_PLANE2_FD_EXT
+            EXTImageDMABufImport.EGL_DMA_BUF_PLANE2_FD_EXT,
+            EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE3_FD_EXT
     };
     static final int[] DMA_BUF_PLANE_OFFSET_ATTRS = new int[]{
             EXTImageDMABufImport.EGL_DMA_BUF_PLANE0_OFFSET_EXT,
             EXTImageDMABufImport.EGL_DMA_BUF_PLANE1_OFFSET_EXT,
-            EXTImageDMABufImport.EGL_DMA_BUF_PLANE2_OFFSET_EXT
+            EXTImageDMABufImport.EGL_DMA_BUF_PLANE2_OFFSET_EXT,
+            EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE3_OFFSET_EXT
     };
     static final int[] DMA_BUF_PLANE_PITCH_ATTRS = new int[]{
             EXTImageDMABufImport.EGL_DMA_BUF_PLANE0_PITCH_EXT,
             EXTImageDMABufImport.EGL_DMA_BUF_PLANE1_PITCH_EXT,
-            EXTImageDMABufImport.EGL_DMA_BUF_PLANE2_PITCH_EXT
+            EXTImageDMABufImport.EGL_DMA_BUF_PLANE2_PITCH_EXT,
+            EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE3_PITCH_EXT
     };
     static final int[] DMA_BUF_PLANE_MODIFIER_LO_ATTRS = new int[]{
             EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT,
             EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT,
-            EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT
+            EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT,
+            EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE3_MODIFIER_LO_EXT
     };
     static final int[] DMA_BUF_PLANE_MODIFIER_HI_ATTRS = new int[]{
             EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT,
             EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT,
-            EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT
+            EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT,
+            EXTImageDMABufImportModifiers.EGL_DMA_BUF_PLANE3_MODIFIER_HI_EXT
     };
 
     private CefConstants() {}

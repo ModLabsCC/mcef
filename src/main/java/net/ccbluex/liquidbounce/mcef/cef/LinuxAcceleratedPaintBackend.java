@@ -13,6 +13,7 @@ package net.ccbluex.liquidbounce.mcef.cef;
 
 import com.mojang.blaze3d.opengl.GlStateManager;
 import net.ccbluex.liquidbounce.mcef.MCEF;
+import net.ccbluex.liquidbounce.mcef.utils.EglImageBinding;
 import net.ccbluex.liquidbounce.mcef.utils.EglUtils;
 import org.cef.handler.CefAcceleratedPaintInfo;
 import org.cef.handler.CefAcceleratedPaintInfoLinux;
@@ -21,16 +22,13 @@ import org.jspecify.annotations.Nullable;
 import org.lwjgl.egl.EGL14;
 import org.lwjgl.egl.EXTImageDMABufImport;
 import org.lwjgl.egl.KHRImageBase;
-import org.lwjgl.opengl.EXTEGLImageStorage;
 import org.lwjgl.system.MemoryStack;
-
-import java.nio.IntBuffer;
-import java.util.Arrays;
 
 import static org.lwjgl.opengl.GL11.*;
 
 @NullMarked
 final class LinuxAcceleratedPaintBackend implements AcceleratedPaintBackend {
+    private boolean failureReported;
 
     @Override
     public boolean accepts(CefAcceleratedPaintInfo info) {
@@ -40,150 +38,68 @@ final class LinuxAcceleratedPaintBackend implements AcceleratedPaintBackend {
     @Override
     public @Nullable AcceleratedPaintFrame importFrame(CefAcceleratedPaintInfo info, int width, int height) {
         var linuxInfo = (CefAcceleratedPaintInfoLinux) info;
-        if (!linuxInfo.hasDmaBufPlanes()) {
-            MCEF.INSTANCE.LOGGER.warn("Accelerated paint info has no dmabuf planes on Linux.");
+        long display = EglUtils.getDisplay();
+        if (display == EGL14.EGL_NO_DISPLAY || EGL14.eglGetCurrentContext() == EGL14.EGL_NO_CONTEXT) {
+            reportFailure("No current EGL display/context for dma-buf import");
             return null;
         }
-
-        var display = EglUtils.getDisplay();
-        if (display == EGL14.EGL_NO_DISPLAY) {
-            MCEF.INSTANCE.LOGGER.error("EGL display is not available for dmabuf import.");
+        if (!EglImageBinding.isSupported()) {
+            reportFailure("No supported OpenGL EGLImage import entry point");
             return null;
         }
-
-        if (EGL14.eglGetCurrentContext() == EGL14.EGL_NO_CONTEXT) {
-            MCEF.INSTANCE.LOGGER.warn("No current EGL context available for dmabuf import.");
-            return null;
-        }
-
-        var drmFormat = switch (linuxInfo.format) {
-            case CefConstants.CEF_COLOR_TYPE_RGBA_8888 -> CefConstants.DRM_FORMAT_ABGR8888;
-            case CefConstants.CEF_COLOR_TYPE_BGRA_8888 -> CefConstants.DRM_FORMAT_ARGB8888;
-            default -> 0;
-        };
-
-        if (drmFormat == 0) {
-            MCEF.INSTANCE.LOGGER.error("Unsupported accelerated paint format: {}", linuxInfo.format);
-            return null;
-        }
-
-        var planeCount = Math.min(linuxInfo.plane_count, CefConstants.DMA_BUF_PLANE_FD_ATTRS.length);
-        planeCount = Math.min(planeCount, linuxInfo.plane_fds.length);
-        planeCount = Math.min(planeCount, linuxInfo.plane_strides.length);
-        planeCount = Math.min(planeCount, linuxInfo.plane_offsets.length);
-        if (planeCount <= 0) {
-            MCEF.INSTANCE.LOGGER.warn("No dmabuf planes available for accelerated paint.");
-            return null;
-        }
-
-        var eglCapabilities = EglUtils.getCapabilities();
-        var useModifiers = eglCapabilities.EGL_EXT_image_dma_buf_import_modifiers;
-        var modifier = linuxInfo.modifier;
-
-        var planeAttribInts = useModifiers ? 10 : 6;
-        var attribCapacity = 6 + (planeCount * planeAttribInts) + 1;
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            var attribs = stack.mallocInt(attribCapacity);
-            attribs.put(EGL14.EGL_WIDTH).put(width);
-            attribs.put(EGL14.EGL_HEIGHT).put(height);
-            attribs.put(EXTImageDMABufImport.EGL_LINUX_DRM_FOURCC_EXT).put(drmFormat);
+            var attributes = stack.mallocInt(LinuxDmaBuf.MAX_ATTRIBUTE_INTS);
+            try {
+                LinuxDmaBuf.writeAttributes(linuxInfo, width, height,
+                        EglUtils.getCapabilities().EGL_EXT_image_dma_buf_import_modifiers, attributes);
+            } catch (IllegalArgumentException e) {
+                reportFailure(e.getMessage());
+                return null;
+            }
+            long image = EglUtils.eglCreateImageKHR(display, EGL14.EGL_NO_CONTEXT,
+                    EXTImageDMABufImport.EGL_LINUX_DMA_BUF_EXT, 0L, attributes);
+            if (image == 0L) {
+                reportFailure("eglCreateImageKHR failed: EGL error 0x" + Integer.toHexString(EGL14.eglGetError())
+                        + ", format=" + linuxInfo.format + ", planes=" + linuxInfo.plane_count
+                        + ", modifier=0x" + Long.toHexString(linuxInfo.modifier));
+                return null;
+            }
 
-            for (int i = 0; i < planeCount; i++) {
-                long offset = linuxInfo.plane_offsets[i];
-                if (offset > Integer.MAX_VALUE) {
-                    MCEF.INSTANCE.LOGGER.error("dmabuf plane offset too large for EGL attributes: {}", offset);
+            int previousTexture = glGetInteger(GL_TEXTURE_BINDING_2D);
+            int texture = 0;
+            boolean transferred = false;
+            try {
+                texture = glGenTextures();
+                GlStateManager._bindTexture(texture);
+                EglImageBinding.bind(image);
+                int error = glGetError();
+                if (error != GL_NO_ERROR) {
+                    reportFailure("EGLImage texture binding failed: GL error 0x" + Integer.toHexString(error));
                     return null;
                 }
-
-                attribs.put(CefConstants.DMA_BUF_PLANE_FD_ATTRS[i]).put(linuxInfo.plane_fds[i]);
-                attribs.put(CefConstants.DMA_BUF_PLANE_OFFSET_ATTRS[i]).put((int) offset);
-                attribs.put(CefConstants.DMA_BUF_PLANE_PITCH_ATTRS[i]).put(linuxInfo.plane_strides[i]);
-
-                if (useModifiers) {
-                    int modifierLo = (int) (modifier & 0xffffffffL);
-                    int modifierHi = (int) ((modifier >>> 32) & 0xffffffffL);
-                    attribs.put(CefConstants.DMA_BUF_PLANE_MODIFIER_LO_ATTRS[i]).put(modifierLo);
-                    attribs.put(CefConstants.DMA_BUF_PLANE_MODIFIER_HI_ATTRS[i]).put(modifierHi);
-                }
+                var directTexture = new MCEFDirectTexture();
+                directTexture.setOwnedDirectTextureId(texture, width, height);
+                // EGL interprets the DRM FourCC and exposes RGBA components in GL for both formats.
+                var frame = new AcceleratedPaintFrame(directTexture.getTexture(), false, directTexture::close);
+                transferred = true;
+                failureReported = false;
+                return frame;
+            } finally {
+                GlStateManager._bindTexture(previousTexture);
+                if (!transferred && texture != 0) GlStateManager._deleteTexture(texture);
+                KHRImageBase.eglDestroyImageKHR(display, image);
             }
+        }
+    }
 
-            attribs.put(EGL14.EGL_NONE);
-            attribs.flip();
-
-            var attribSnapshot = new int[attribs.remaining()];
-            attribs.get(attribSnapshot);
-            attribs.rewind();
-            logDmaBufImport(linuxInfo, planeCount, display, drmFormat, width, height, attribSnapshot);
-
-            var eglImage = EglUtils.eglCreateImageKHR(
-                    display,
-                    EGL14.EGL_NO_CONTEXT,
-                    EXTImageDMABufImport.EGL_LINUX_DMA_BUF_EXT,
-                    0L,
-                    attribs
-            );
-
-            if (eglImage == 0) {
-                var eglError = EGL14.eglGetError();
-                MCEF.INSTANCE.LOGGER.error(
-                        "eglCreateImageKHR failed for dmabuf import. eglGetError=0x{}",
-                        Integer.toHexString(eglError)
-                );
-                MCEF.INSTANCE.LOGGER.error("dmabuf attribs at failure: {}", Arrays.toString(attribSnapshot));
-                return null;
-            }
-
-            var sharedTextureId = glGenTextures();
-            GlStateManager._bindTexture(sharedTextureId);
-            EXTEGLImageStorage.glEGLImageTargetTexStorageEXT(GL_TEXTURE_2D, eglImage, (IntBuffer) null);
-            KHRImageBase.eglDestroyImageKHR(display, eglImage);
-
-            var error = glGetError();
-            if (error != GL_NO_ERROR) {
-                MCEF.INSTANCE.LOGGER.error("glEGLImageTargetTexture2DOES failed with error: {}", error);
-                glDeleteTextures(sharedTextureId);
-                return null;
-            }
-
-            GlStateManager._bindTexture(0);
-
-            var directTexture = new MCEFDirectTexture();
-            directTexture.setOwnedDirectTextureId(sharedTextureId, width, height);
-            var bgra = linuxInfo.format != CefConstants.CEF_COLOR_TYPE_BGRA_8888;
-            return new AcceleratedPaintFrame(directTexture.getTexture(), bgra, directTexture::close);
+    private void reportFailure(String reason) {
+        if (!failureReported) {
+            failureReported = true;
+            MCEF.INSTANCE.LOGGER.error("Linux accelerated paint failed: {}", reason);
         }
     }
 
     @Override
-    public void close() {
-    }
-
-    private void logDmaBufImport(
-            CefAcceleratedPaintInfoLinux info,
-            int planeCount,
-            long display,
-            int drmFormat,
-            int width,
-            int height,
-            int[] attribSnapshot
-    ) {
-        MCEF.INSTANCE.LOGGER.debug(
-                "dmabuf planes: count={}, fds={}, strides={}, offsets={}, modifier=0x{}",
-                planeCount,
-                Arrays.toString(info.plane_fds),
-                Arrays.toString(info.plane_strides),
-                Arrays.toString(info.plane_offsets),
-                Long.toHexString(info.modifier)
-        );
-        MCEF.INSTANCE.LOGGER.debug("EGL display: display=0x{}", Long.toHexString(display));
-        MCEF.INSTANCE.LOGGER.debug(
-                "dmabuf format: drmFormat=0x{}, size={}x{}",
-                Integer.toHexString(drmFormat),
-                width,
-                height
-        );
-        MCEF.INSTANCE.LOGGER.debug("eglCreateImageKHR dmabuf attribs: {}", Arrays.toString(attribSnapshot));
-    }
-
+    public void close() {}
 }

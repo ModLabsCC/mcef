@@ -35,3 +35,36 @@ Minecraft and all JCEF process private memory, GPU memory, and frame-time percen
 Memory should settle after warm-up rather than grow with each cycle. Hidden browsers
 should stop uploading textures; restored screens and dropdowns must repaint correctly.
 Repeat with acceleration on and off. Also test theme/resource reload and browser restart.
+
+## Linux and Wayland
+
+The Linux launch default now uses `--use-angle=gl-egl`, required for shared-texture
+OSR by [CEF #3953](https://github.com/chromiumembedded/cef/issues/3953). Explicit
+caller switches are preserved. The CEF child still defaults to X11/XWayland because
+of its GTK integration; this does not change the host application's Wayland window.
+
+Imports use the EGL display that owns the current Minecraft context, without opening
+or initializing an unrelated default display. The host must actually use EGL; a GLX
+context under XWayland is not sufficient. Capability checks require either
+`GL_EXT_EGL_image_storage` or `GL_OES_EGL_image`, and the importer supports both.
+The OES texture is configured without mipmap requirements. Texture bindings and EGL
+images are cleaned up on failed imports as well as successful imports.
+
+DMA-BUF descriptors retain up to four planes and all 64 modifier bits. Invalid or
+truncated metadata is rejected, and tiled/compressed modifiers are never silently
+dropped on a driver lacking modifier support. EGL handles DRM pixel format conversion;
+an additional BGRA shader swap is not needed. Repeated import failures log once until
+an import succeeds, instead of flooding the log every frame.
+
+**NVIDIA remains a native limitation, not a completed fix.** The pinned JCEF build
+uses CEF `143.0.14+gdd46a37+chromium-143.0.7499.193`. Its shared-texture capture
+allocates CPU-mappable linear GBM buffers, which can fail on NVIDIA before a usable
+paint callback reaches Java. [CEF #4237](https://github.com/chromiumembedded/cef/issues/4237)
+and [the pending CEF fix](https://github.com/chromiumembedded/cef/pull/4238) describe
+the producer-side change. Changing this Java importer does not apply that native fix.
+Do not remove a host's NVIDIA safeguard until patched native CEF/JCEF binaries are
+built, distributed and verified on that driver.
+
+Nine additional regression tests cover Linux launch switches and DMA-BUF descriptor
+construction. All 22 tests and the Java/client builds pass on the Windows build host.
+No Arch/Wayland/NVIDIA runtime validation has been performed.

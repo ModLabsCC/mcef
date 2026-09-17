@@ -7,7 +7,6 @@ import org.lwjgl.egl.EGL14;
 import org.lwjgl.egl.EGLCapabilities;
 import org.lwjgl.egl.KHRImageBase;
 import org.lwjgl.system.JNI;
-import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
 import java.nio.IntBuffer;
@@ -37,35 +36,19 @@ public final class EglUtils {
     private static long eglDisplay = EGL14.EGL_NO_DISPLAY;
 
     public static long getDisplay() {
-        if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
-            return eglDisplay;
-        }
-
         long display = EGL14.eglGetCurrentDisplay();
+        // Import into the display owning Minecraft's current context. Opening the default
+        // display can choose X11 on a Wayland session (or a different GPU).
         if (display == EGL14.EGL_NO_DISPLAY) {
-            display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
-        }
-
-        if (display == EGL14.EGL_NO_DISPLAY) {
+            eglDisplay = EGL14.EGL_NO_DISPLAY;
+            eglCapabilities = null;
             return EGL14.EGL_NO_DISPLAY;
         }
-
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            IntBuffer major = stack.mallocInt(1);
-            IntBuffer minor = stack.mallocInt(1);
-            if (!EGL14.eglInitialize(display, major, minor)) {
-                MCEF.INSTANCE.LOGGER.error("eglInitialize failed for EGL display.");
-                return EGL14.EGL_NO_DISPLAY;
-            }
+        if (display == eglDisplay && eglCapabilities != null) {
+            return display;
         }
-
+        // The owner already initialized this display; do not change its lifecycle.
         eglDisplay = display;
-
-        try {
-            EGL.getCapabilities();
-        } catch (IllegalStateException ignored) {
-            EGL.create();
-        }
         eglCapabilities = EGL.createDisplayCapabilities(display);
 
         return eglDisplay;

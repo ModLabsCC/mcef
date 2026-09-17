@@ -9,7 +9,10 @@ resource lifecycle fixes and rendering performance improvements.
 See [PERFORMANCE.md](PERFORMANCE.md) for the changes and runtime verification steps.
 
 Build with JDK 25: `git submodule update --init --recursive`, then `./gradlew build`.
-The artifact version is `3.4.0-26.2-modlabs.1`.
+The artifact version is `3.4.0-26.2-modlabs.2`.
+
+Linux EGL import improvements are included. NVIDIA shared-texture rendering still
+requires a native CEF fix; see [the platform limitations](PERFORMANCE.md#linux-and-wayland).
 
 ## Upstream background
 
