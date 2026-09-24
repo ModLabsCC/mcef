@@ -20,6 +20,9 @@ tasks.register('cloneJcef', Exec) {
 }
 
 tasks.register('generateJcefCommitFile') {
+    // The commit is read from the submodule's HEAD/ref, so declare it as an
+    // input to invalidate the generated resource when the submodule changes.
+    inputs.property 'javaCefCommit', getCheckedOutGitCommitHash(project)
     outputs.file jcefCommitFile
     doLast {
         def commitHash = getCheckedOutGitCommitHash(project)
@@ -51,7 +54,7 @@ dependencies {
     api "net.fabricmc:fabric-loader:${project.loader_version}"
 
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
-    implementation "org.lwjgl:lwjgl-egl:3.4.1"
+    implementation "org.lwjgl:lwjgl-egl:3.4.3"
 
     def junitVersion = "6.1.2"
     testImplementation "org.junit.jupiter:junit-jupiter:$junitVersion"

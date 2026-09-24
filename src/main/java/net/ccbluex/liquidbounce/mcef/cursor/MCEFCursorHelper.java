@@ -35,9 +35,9 @@ public class MCEFCursorHelper {
      * Helper method to get a {@link CursorType} for the given {@link CefCursorType} cursor type
      */
     public static CursorType getCursorType(CefCursorType cursorType) {
-        return CEF_TO_B3D_CURSORS.computeIfAbsent(cursorType, k -> k.glfwId == 0
+        return CEF_TO_B3D_CURSORS.computeIfAbsent(cursorType, k -> k.sdlCursorId < 0
                 ? CursorType.DEFAULT
-                : CursorType.createStandardCursor(k.glfwId, "CEF-CursorType-" + k.name(), CursorType.DEFAULT));
+                : CursorType.createStandardCursor(k.sdlCursorId, "CEF-CursorType-" + k.name(), CursorType.DEFAULT));
     }
 
 }

@@ -38,14 +38,13 @@ import org.cef.event.CefMouseWheelEvent;
 import org.cef.handler.CefAcceleratedPaintInfo;
 import org.cef.misc.CefCursorType;
 import org.jspecify.annotations.Nullable;
+import org.lwjgl.sdl.SDLKeycode;
 import org.lwjgl.system.MemoryUtil;
 
 import java.awt.*;
 import java.nio.ByteBuffer;
 
 import static net.ccbluex.liquidbounce.mcef.MCEF.mc;
-import static org.lwjgl.glfw.GLFW.GLFW_PRESS;
-import static org.lwjgl.glfw.GLFW.GLFW_RELEASE;
 
 /**
  * An instance of an "Off-screen rendered" Chromium web browser.
@@ -284,33 +283,53 @@ public class MCEFBrowser extends CefBrowserOsr {
     }
 
     // Inputs
-    public void sendKeyPress(int keyCode, long scanCode, int modifiers) {
-        if (isControlOrCommand(modifiers) && keyCode == InputConstants.KEY_R) {
+
+    /**
+     * Forwards a key press. The parameters mirror {@code net.minecraft.client.input.KeyEvent}.
+     *
+     * @param scancode  the SDL scancode of the physical key ({@code KeyEvent.key()},
+     *                  comparable against {@code InputConstants.KEY_*})
+     * @param keycode   the layout dependent SDL keycode ({@code KeyEvent.keycode()},
+     *                  comparable against {@code InputConstants.KEYCODE_*})
+     * @param modifiers the SDL keymod bitmask ({@code KeyEvent.modifiers()})
+     */
+    public void sendKeyPress(int scancode, int keycode, int modifiers) {
+        if (isControlOrCommand(modifiers) && scancode == InputConstants.KEY_R) {
             reload();
             return;
         }
 
-        CefKeyEvent e = new CefKeyEvent(CefKeyEvent.KEY_PRESS, keyCode, (char) keyCode, modifiers);
-        e.scancode = scanCode;
-        sendKeyEvent(e);
+        sendKeyEvent(createKeyEvent(CefKeyEvent.KEY_PRESS, scancode, keycode, modifiers));
     }
 
-    public void sendKeyRelease(int keyCode, long scanCode, int modifiers) {
-        if (isControlOrCommand(modifiers) && keyCode == InputConstants.KEY_R) {
+    /**
+     * @see #sendKeyPress(int, int, int)
+     */
+    public void sendKeyRelease(int scancode, int keycode, int modifiers) {
+        if (isControlOrCommand(modifiers) && scancode == InputConstants.KEY_R) {
             return;
         }
 
-        CefKeyEvent e = new CefKeyEvent(CefKeyEvent.KEY_RELEASE, keyCode, (char) keyCode, modifiers);
-        e.scancode = scanCode;
-        sendKeyEvent(e);
+        sendKeyEvent(createKeyEvent(CefKeyEvent.KEY_RELEASE, scancode, keycode, modifiers));
     }
 
-    public void sendKeyTyped(char c, int modifiers) {
-        if (isControlOrCommand(modifiers) && Character.toLowerCase(c) == 'r') {
-            return;
-        }
+    /**
+     * The native side identifies keys by SDL keycode. For a printable key the
+     * keycode is its code point, which doubles as the key char; every other
+     * keycode carries a mask bit and has no character representation.
+     */
+    private static CefKeyEvent createKeyEvent(int id, int scancode, int keycode, int modifiers) {
+        char keyChar = (keycode & (SDLKeycode.SDLK_SCANCODE_MASK | SDLKeycode.SDLK_EXTENDED_MASK)) == 0
+                ? (char) keycode
+                : '\0';
 
-        CefKeyEvent e = new CefKeyEvent(CefKeyEvent.KEY_TYPE, c, c, modifiers);
+        var event = new CefKeyEvent(id, keycode, keyChar, modifiers);
+        event.scancode = scancode;
+        return event;
+    }
+
+    public void sendKeyTyped(int codepoint) {
+        CefKeyEvent e = new CefKeyEvent(CefKeyEvent.KEY_TYPE, codepoint, (char) codepoint, 0);
         sendKeyEvent(e);
     }
 
@@ -324,13 +343,11 @@ public class MCEFBrowser extends CefBrowserOsr {
     }
 
     public void sendMousePress(int mouseX, int mouseY, int button) {
-        button = swapButton(button);
-
-        if (button == 0) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT) {
             btnMask |= CefMouseEvent.BUTTON1_MASK;
-        } else if (button == 1) {
+        } else if (button == InputConstants.MOUSE_BUTTON_MIDDLE) {
             btnMask |= CefMouseEvent.BUTTON2_MASK;
-        } else if (button == 2) {
+        } else if (button == InputConstants.MOUSE_BUTTON_RIGHT) {
             btnMask |= CefMouseEvent.BUTTON3_MASK;
         }
 
@@ -338,7 +355,7 @@ public class MCEFBrowser extends CefBrowserOsr {
         var time = System.currentTimeMillis();
         clicks = time - lastClickTime < 500 ? 2 : 1;
 
-        sendMouseEvent(new CefMouseEvent(GLFW_PRESS, mouseX, mouseY, clicks, button, btnMask));
+        sendMouseEvent(new CefMouseEvent(CefMouseEvent.MOUSE_PRESSED, mouseX, mouseY, clicks, button, btnMask));
 
         this.lastClickTime = time;
         this.mouseButton = button;
@@ -346,24 +363,22 @@ public class MCEFBrowser extends CefBrowserOsr {
 
     // TODO: it may be necessary to add modifiers here
     public void sendMouseRelease(int mouseX, int mouseY, int button) {
-        button = swapButton(button);
-
-        if (button == 0 && (btnMask & CefMouseEvent.BUTTON1_MASK) != 0) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT && (btnMask & CefMouseEvent.BUTTON1_MASK) != 0) {
             btnMask ^= CefMouseEvent.BUTTON1_MASK;
-        } else if (button == 1 && (btnMask & CefMouseEvent.BUTTON2_MASK) != 0) {
+        } else if (button == InputConstants.MOUSE_BUTTON_MIDDLE && (btnMask & CefMouseEvent.BUTTON2_MASK) != 0) {
             btnMask ^= CefMouseEvent.BUTTON2_MASK;
-        } else if (button == 2 && (btnMask & CefMouseEvent.BUTTON3_MASK) != 0) {
+        } else if (button == InputConstants.MOUSE_BUTTON_RIGHT && (btnMask & CefMouseEvent.BUTTON3_MASK) != 0) {
             btnMask ^= CefMouseEvent.BUTTON3_MASK;
         }
 
         // drag & drop
         if (dragContext.isDragging()) {
-            if (button == 0) {
+            if (button == InputConstants.MOUSE_BUTTON_LEFT) {
                 finishDragging(mouseX, mouseY);
             }
         }
 
-        sendMouseEvent(new CefMouseEvent(GLFW_RELEASE, mouseX, mouseY, clicks, button, btnMask));
+        sendMouseEvent(new CefMouseEvent(CefMouseEvent.MOUSE_RELEASED, mouseX, mouseY, clicks, button, btnMask));
         this.mouseButton = 0;
     }
 
@@ -482,27 +497,14 @@ public class MCEFBrowser extends CefBrowserOsr {
         // We do not want to change the cursor state since Minecraft does this for us.
         if (cursorType == CefCursorType.NONE) return;
 
-        MCEFCursorHelper.getCursorType(cursorType).select(mc.getWindow());
+        MCEFCursorHelper.getCursorType(cursorType).select();
     }
 
     private boolean isControlOrCommand(int modifiers) {
-        return modifiers == (InputQuirks.REPLACE_CTRL_KEY_WITH_CMD_KEY ? InputConstants.MOD_SUPER : InputConstants.MOD_CONTROL);
-    }
-
-    /**
-     * For some reason, middle and right are swapped in MC
-     *
-     * @param button the button to swap
-     * @return the swapped button
-     */
-    private int swapButton(int button) {
-        if (button == 1) {
-            return 2;
-        } else if (button == 2) {
-            return 1;
-        }
-
-        return button;
+        int modifier = InputQuirks.REPLACE_CTRL_KEY_WITH_CMD_KEY
+                ? InputConstants.MOD_SUPER
+                : InputConstants.MOD_CONTROL;
+        return (modifiers & modifier) != 0;
     }
 
 }
