@@ -32,13 +32,8 @@ import java.util.Objects;
 
 public class MCEFSettings {
 
-    private List<String> hosts = new ArrayList<>(Arrays.asList(
-            // Cloudflare Certificate
-            "https://api.liquidbounce.net/api/v3/resource",
-            // Let's Encrypt Certificate
-            "https://api.ccbluex.net/api/v3/resource",
-            // No SSL
-            "http://nossl.api.liquidbounce.net/api/v3/resource"
+    private List<String> hosts = new ArrayList<>(List.of(
+            "https://github.com/ModLabsCC/mcef/releases/download/jcef-${java-cef-commit}"
     ));
     private String userAgent = null;
     private List<String> cefSwitches = new ArrayList<>(Arrays.asList(

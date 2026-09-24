@@ -46,9 +46,9 @@ import static net.ccbluex.liquidbounce.mcef.utils.FileUtils.extractTarGz;
 public class MCEFDownloadManager {
 
     private static final String JAVA_CEF_DOWNLOAD_URL =
-            "${host}/mcef-cef/${java-cef-commit}/${platform}";
+            "${host}/${platform}.tar.gz";
     private static final String JAVA_CEF_CHECKSUM_DOWNLOAD_URL =
-            "${host}/mcef-cef/${java-cef-commit}/${platform}/checksum";
+            "${host}/${platform}.tar.gz.sha256";
 
     private final String[] hosts;
     private final String javaCefCommitHash;

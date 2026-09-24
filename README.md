@@ -22,7 +22,12 @@ A lightweight fork of MCEF designed specifically for integration with LiquidBoun
 
 MCEF is based on java-cef (Java Chromium Embedded Framework), which is based on CEF (Chromium Embedded Framework), which is based on Chromium. Originally created by montoyo and rewritten by the CinemaMod Group, this version has been streamlined for LiquidBounce integration.
 
-The library includes a downloader system for retrieving the necessary java-cef & CEF binaries required by the Chromium browser. This requires a connection to https://api.liquidbounce.net/, as well as Cloudflare Storage.
+The library downloads its pinned java-cef and CEF binaries from this repository's
+GitHub release `jcef-<java-cef commit>`. That public release must contain
+`<platform>.tar.gz` and `<platform>.tar.gz.sha256` for each supported platform.
+The checksum file contains only the lowercase SHA-256 hex digest and a newline.
+Include `java-cef/LICENSE.txt` with the release. For local tests, an extracted
+platform directory can be supplied through `PROVIDED_JCEF_PATH`.
 
 The native JCEF revision is pinned by the `java-cef` submodule and recorded in `jcef.commit`.
 
